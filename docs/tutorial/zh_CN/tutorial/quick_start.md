@@ -4,6 +4,7 @@
 
 - Node.js >= 20.0.0
 - npm >= 10.0.0
+- [Docker](https://docs.docker.com/install/#supported-platforms)（可选，用于 Docker 部署）
 
 > 💡 **提示**：如果你使用 nvm，可以运行 nvm use 自动切换到所需的 Node.js 版本。
 
@@ -35,6 +36,16 @@ npm install
 # 然后运行以下命令启动 AgentScope-Studio：
 npm run dev
 ```
+
+### Docker 部署
+
+请参阅项目根目录的 `docker/README.md`。
+
+### 部署到阿里云
+
+如果您计划在云上使用 AgentScope-Studio，推荐直接在阿里云实现一键部署。
+
+[在阿里云一键部署 AgentScope-Studio](https://help.aliyun.com/zh/compute-nest/use-cases/agent-scope-studio-community-edition-service-instance-deployment-document)
 
 ## 连接到 AgentScope-Studio
 

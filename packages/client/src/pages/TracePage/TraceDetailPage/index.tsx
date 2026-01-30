@@ -1,4 +1,3 @@
-import dayjs from 'dayjs';
 import {
     CheckCircle2Icon,
     ChevronDownIcon,
@@ -19,8 +18,17 @@ import {
 } from '@/components/ui/accordion.tsx';
 import { Button } from '@/components/ui/button.tsx';
 import { Separator } from '@/components/ui/separator.tsx';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip.tsx';
 import { useTraceContext } from '@/context/TraceContext';
-import { copyToClipboard } from '@/utils/common';
+import {
+    copyToClipboard,
+    formatDateTime,
+    formatDurationWithUnit,
+} from '@/utils/common';
 import { SpanData } from '@shared/types/trace';
 import { getNestedValue } from '@shared/utils/objectUtils';
 
@@ -28,19 +36,6 @@ interface SpanTreeNode {
     span: SpanData;
     children?: SpanTreeNode[];
 }
-
-// Helper functions defined outside component to avoid hoisting issues
-const formatDuration = (seconds: number): string => {
-    if (seconds < 1) {
-        return `${(seconds * 1000).toFixed(2)}ms`;
-    }
-    return `${seconds.toFixed(2)}s`;
-};
-
-const formatTime = (timeNs: string): string => {
-    const timeMs = Number(BigInt(timeNs) / BigInt(1_000_000));
-    return dayjs(timeMs).format('YYYY-MM-DD HH:mm:ss.SSS');
-};
 
 const getStatusIcon = (statusCode: number) => {
     if (statusCode === 2) {
@@ -74,15 +69,21 @@ const TraceDetailPage = ({ traceId }: TraceDetailPageProps) => {
         }
     }, [traceId, selectedTraceId, setSelectedTraceId]);
 
+    // Use all spans from trace data
+    const filteredSpans = useMemo(() => {
+        if (!traceData?.spans) return [];
+        return traceData.spans;
+    }, [traceData]);
+
     // Build tree structure from spans
     const treeData = useMemo(() => {
-        if (!traceData?.spans) return [];
+        if (!filteredSpans.length) return [];
 
         const spanMap = new Map<string, SpanTreeNode>();
         const rootNodes: SpanTreeNode[] = [];
 
         // First pass: create all nodes
-        traceData.spans.forEach((span) => {
+        filteredSpans.forEach((span) => {
             const node: SpanTreeNode = {
                 span,
                 children: [],
@@ -91,7 +92,7 @@ const TraceDetailPage = ({ traceId }: TraceDetailPageProps) => {
         });
 
         // Second pass: build tree structure
-        traceData.spans.forEach((span) => {
+        filteredSpans.forEach((span) => {
             const node = spanMap.get(span.spanId)!;
             if (!span.parentSpanId || !spanMap.has(span.parentSpanId)) {
                 rootNodes.push(node);
@@ -105,34 +106,34 @@ const TraceDetailPage = ({ traceId }: TraceDetailPageProps) => {
         });
 
         return rootNodes;
-    }, [traceData]);
+    }, [filteredSpans]);
 
     const selectedSpan = useMemo(() => {
-        if (!selectedSpanId || !traceData?.spans) return null;
-        return traceData.spans.find((s) => s.spanId === selectedSpanId) || null;
-    }, [selectedSpanId, traceData]);
+        if (!selectedSpanId || !filteredSpans.length) return null;
+        return filteredSpans.find((s) => s.spanId === selectedSpanId) || null;
+    }, [selectedSpanId, filteredSpans]);
 
     // Get root span for overall trace info
     const rootSpan = useMemo(() => {
-        if (!traceData?.spans) return null;
+        if (!filteredSpans.length) return null;
         return (
-            traceData.spans.find((s) => !s.parentSpanId) ||
-            traceData.spans[0] ||
+            filteredSpans.find((s) => !s.parentSpanId) ||
+            filteredSpans[0] ||
             null
         );
-    }, [traceData]);
+    }, [filteredSpans]);
 
     // Calculate trace total duration (from earliest start to latest end)
     const traceDuration = useMemo(() => {
-        if (!traceData?.spans || traceData.spans.length === 0) return 0;
-        const startTimes = traceData.spans.map((s) =>
+        if (!filteredSpans.length) return 0;
+        const startTimes = filteredSpans.map((s) =>
             BigInt(s.startTimeUnixNano),
         );
-        const endTimes = traceData.spans.map((s) => BigInt(s.endTimeUnixNano));
+        const endTimes = filteredSpans.map((s) => BigInt(s.endTimeUnixNano));
         const earliestStart = startTimes.reduce((a, b) => (a < b ? a : b));
         const latestEnd = endTimes.reduce((a, b) => (a > b ? a : b));
         return Number(latestEnd - earliestStart) / 1e9;
-    }, [traceData]);
+    }, [filteredSpans]);
 
     // Display span (selected or root)
     const displaySpan = selectedSpan || rootSpan;
@@ -228,7 +229,7 @@ const TraceDetailPage = ({ traceId }: TraceDetailPageProps) => {
         return (
             <div key={node.span.spanId} className="w-full">
                 <div
-                    className={`flex items-center gap-2 p-2 rounded-md cursor-pointer hover:bg-muted ${
+                    className={`flex items-center gap-2 p-2 rounded-md cursor-pointer hover:bg-muted overflow-hidden ${
                         isSelected ? 'bg-muted' : ''
                     }`}
                     style={{ paddingLeft: `${level * 16 + 8}px` }}
@@ -256,9 +257,20 @@ const TraceDetailPage = ({ traceId }: TraceDetailPageProps) => {
                         </button>
                     )}
                     {!hasChildren && <div className="w-4" />}
-                    <span className="flex-1 text-sm">{node.span.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                        {formatDuration(duration)}
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <span className="flex-1 text-sm truncate min-w-0">
+                                {node.span.name}
+                            </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            <span className="text-xs break-all max-w-[400px]">
+                                {node.span.name}
+                            </span>
+                        </TooltipContent>
+                    </Tooltip>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                        {formatDurationWithUnit(duration)}
                     </span>
                     {getStatusIcon(node.span.status?.code || 0)}
                 </div>
@@ -296,7 +308,7 @@ const TraceDetailPage = ({ traceId }: TraceDetailPageProps) => {
                                     {t('table.column.duration')}:
                                 </span>
                                 <span className="text-xs">
-                                    {formatDuration(traceDuration)}
+                                    {formatDurationWithUnit(traceDuration)}
                                 </span>
                             </div>
                             <div>
@@ -304,7 +316,7 @@ const TraceDetailPage = ({ traceId }: TraceDetailPageProps) => {
                                     {t('table.column.startTime')}:
                                 </span>
                                 <span className="text-xs">
-                                    {formatTime(rootSpan.startTimeUnixNano)}
+                                    {formatDateTime(rootSpan.startTimeUnixNano)}
                                 </span>
                             </div>
                         </div>
@@ -383,7 +395,9 @@ const TraceDetailPage = ({ traceId }: TraceDetailPageProps) => {
                                     {t('common.start-time')}
                                 </div>
                                 <div className="text-sm font-medium break-words">
-                                    {formatTime(displaySpan.startTimeUnixNano)}
+                                    {formatDateTime(
+                                        displaySpan.startTimeUnixNano,
+                                    )}
                                 </div>
                             </div>
                             <div>
@@ -391,7 +405,7 @@ const TraceDetailPage = ({ traceId }: TraceDetailPageProps) => {
                                     {t('table.column.duration')}
                                 </div>
                                 <div className="text-sm font-medium">
-                                    {formatDuration(
+                                    {formatDurationWithUnit(
                                         Number(
                                             BigInt(
                                                 displaySpan.endTimeUnixNano,

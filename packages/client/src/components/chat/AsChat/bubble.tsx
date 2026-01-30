@@ -1,4 +1,4 @@
-import { memo, ReactNode } from 'react';
+import { memo, ReactNode, useMemo } from 'react';
 import { ContentType, Reply, TextBlock } from '@shared/types';
 import BubbleBlock, {
     CollapsibleBlockDiv,
@@ -25,10 +25,6 @@ interface Props {
     onPlaySpeech?: () => void;
     /** Callback to pause speech audio */
     onPauseSpeech?: () => void;
-    /** Callback to change playback rate */
-    onPlaybackRateChange?: (rate: number) => void;
-    /** Callback to change volume */
-    onVolumeChange?: (volume: number) => void;
 }
 
 const AsBubble = ({
@@ -40,8 +36,6 @@ const AsBubble = ({
     speechState,
     onPlaySpeech,
     onPauseSpeech,
-    onPlaybackRateChange,
-    onVolumeChange,
 }: Props) => {
     const { t } = useTranslation();
 
@@ -67,8 +61,13 @@ const AsBubble = ({
         ));
     };
 
-    const hasAudio = (speechState?.fullAudioData?.length || 0) > 0;
-    const showSpeechBar = speechState?.isStreaming || hasAudio;
+    const showSpeechBar = useMemo(() => {
+        if (!speechState) return false;
+        return (
+            speechState.isStreaming ||
+            (speechState.fullAudioData?.length ?? 0) > 0
+        );
+    }, [speechState]);
 
     return (
         <div className="flex flex-col w-full max-w-full">
@@ -109,27 +108,17 @@ const AsBubble = ({
                             return renderBlock(msg.content, markdown);
                         })}
                     </div>
-
-                    {/* Speech bar - shown below the message content */}
-                    {showSpeechBar && (
-                        <div className="mt-2">
-                            <SpeechBar
-                                isPlaying={speechState?.isPlaying || false}
-                                isStreaming={speechState?.isStreaming || false}
-                                hasAudio={hasAudio}
-                                playbackRate={speechState?.playbackRate ?? 1.0}
-                                volume={speechState?.volume ?? 1.0}
-                                onPlay={onPlaySpeech || (() => {})}
-                                onPause={onPauseSpeech || (() => {})}
-                                onPlaybackRateChange={
-                                    onPlaybackRateChange || (() => {})
-                                }
-                                onVolumeChange={onVolumeChange || (() => {})}
-                            />
-                        </div>
-                    )}
                 </div>
             </div>
+            {/* Speech bar - shown below the message content */}
+            {showSpeechBar && onPlaySpeech && onPauseSpeech && (
+                <SpeechBar
+                    isPlaying={speechState?.isPlaying || false}
+                    isStreaming={speechState?.isStreaming || false}
+                    onPlay={onPlaySpeech}
+                    onPause={onPauseSpeech}
+                />
+            )}
         </div>
     );
 };

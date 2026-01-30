@@ -1,59 +1,57 @@
+import { TableColumnsType } from 'antd';
 import { Key, memo, MouseEvent, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Flex, Input, TableColumnsType } from 'antd';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 
-import AsTable from '@/components/tables/AsTable';
 import DeleteIcon from '@/assets/svgs/delete.svg?react';
 import PageTitleSpan from '@/components/spans/PageTitleSpan.tsx';
+import AsTable from '@/components/tables/AsTable';
 
-import { useProjectListRoom } from '@/context/ProjectListRoomContext.tsx';
 import { SecondaryButton } from '@/components/buttons/ASButton';
-import {
-    NumberCell,
-    renderTitle,
-    TextCell,
-} from '@/components/tables/utils.tsx';
-
-interface DataType {
-    project: string;
-    running: number;
-    pending: number;
-    finished: number;
-    total: number;
-    createdAt: string;
-}
+import { NumberCell, TextCell } from '@/components/tables/utils.tsx';
+import { useProjectListRoom } from '@/context/ProjectListRoomContext.tsx';
+import { formatDateTime } from '@/utils/common';
+import type { ProjectData } from '@shared/types';
 
 const ProjectPage = () => {
+    // Obtain data and actions from the ProjectListRoom context
+    const {
+        tableDataSource,
+        tableLoading,
+        total,
+        tableRequestParams,
+        setTableRequestParams,
+        deleteProjects,
+    } = useProjectListRoom();
+
     const { t } = useTranslation();
     const navigate = useNavigate();
-    const { projects, deleteProjects } = useProjectListRoom();
-
-    const [searchText, setSearchText] = useState<string>('');
     const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
 
-    const rowSelection = {
-        selectedRowKeys,
-        onChange: (newSelectedRowKeys: Key[]) => {
-            setSelectedRowKeys(newSelectedRowKeys);
-        },
-    };
-
+    // Filter the selected rows when table data source changes
     useEffect(() => {
-        const existedProjects = projects.map((proj) => proj.project);
+        const existedProjects = tableDataSource.map((proj) => proj.project);
         setSelectedRowKeys((prevRowKeys) =>
             prevRowKeys.filter((project) =>
                 existedProjects.includes(project as string),
             ),
         );
-    }, [projects]);
+    }, [tableDataSource]);
 
-    const columns: TableColumnsType<DataType> = [
+    // Handle delete action
+    const handleDelete = async () => {
+        try {
+            await deleteProjects(selectedRowKeys as string[]);
+            setSelectedRowKeys([]);
+        } catch (error) {
+            console.error('Failed to delete projects:', error);
+        }
+    };
+
+    const columns: TableColumnsType<ProjectData> = [
         {
-            title: renderTitle(t('common.project'), 14),
             key: 'project',
             width: '40%',
-            defaultSortOrder: undefined,
             render: (value, record) => (
                 <TextCell
                     text={value}
@@ -63,11 +61,10 @@ const ProjectPage = () => {
         },
         {
             key: 'createdAt',
-            defaultSortOrder: 'descend',
             width: '20%',
             render: (value, record) => (
                 <TextCell
-                    text={value}
+                    text={formatDateTime(value)}
                     selected={selectedRowKeys.includes(record.project)}
                 />
             ),
@@ -111,70 +108,56 @@ const ProjectPage = () => {
     ];
 
     return (
-        <Flex
-            style={{ width: '100%', height: '100%', padding: '32px 48px' }}
-            vertical={true}
-            gap="middle"
-        >
+        <div className="flex flex-col w-full h-full py-8 px-12 gap-4">
             <PageTitleSpan title={t('common.projects')} />
-            <Flex vertical={false} gap="middle" align="center">
-                <Input
-                    value={searchText}
-                    onChange={(event) => {
-                        setSearchText(event.target.value);
+            <div className="flex-1 min-h-0 w-full">
+                <AsTable<ProjectData>
+                    columns={columns}
+                    searchableColumns={['project']}
+                    searchType="project"
+                    dataSource={tableDataSource}
+                    loading={tableLoading}
+                    onRow={(record: ProjectData) => {
+                        return {
+                            onClick: (event: MouseEvent) => {
+                                if (event.type === 'click') {
+                                    navigate(`${record.project}`);
+                                }
+                            },
+                            className: 'cursor-pointer',
+                        };
                     }}
-                    style={{
-                        width: 300,
-                        borderRadius: 'calc(var(--radius) - 2px)',
-                    }}
-                    variant="outlined"
-                    placeholder={t('placeholder.search-project')}
-                />
-
-                <SecondaryButton
-                    tooltip={
-                        selectedRowKeys.length === 0
-                            ? t(
-                                  'tooltip.button.delete-selected-projects-disable',
-                              )
-                            : t('tooltip.button.delete-selected-projects', {
-                                  number: selectedRowKeys.length,
-                              })
-                    }
-                    icon={<DeleteIcon width={13} height={13} />}
-                    disabled={selectedRowKeys.length === 0}
-                    variant="dashed"
-                    onClick={() => {
-                        deleteProjects(selectedRowKeys as string[]);
-                    }}
-                >
-                    {t('action.delete')}
-                </SecondaryButton>
-            </Flex>
-
-            <AsTable<DataType>
-                columns={columns}
-                dataSource={projects.filter((proj) =>
-                    proj.project.includes(searchText),
-                )}
-                loading={false}
-                onRow={(record: DataType) => {
-                    return {
-                        onClick: (event: MouseEvent) => {
-                            if (event.type === 'click') {
-                                navigate(`${record.project}`);
+                    rowKey="project"
+                    total={total}
+                    tableRequestParams={tableRequestParams}
+                    setTableRequestParams={setTableRequestParams}
+                    selectedRowKeys={selectedRowKeys}
+                    setSelectedRowKeys={setSelectedRowKeys}
+                    actions={
+                        <SecondaryButton
+                            tooltip={
+                                selectedRowKeys.length === 0
+                                    ? t(
+                                          'tooltip.button.delete-selected-projects-disable',
+                                      )
+                                    : t(
+                                          'tooltip.button.delete-selected-projects',
+                                          {
+                                              number: selectedRowKeys.length,
+                                          },
+                                      )
                             }
-                        },
-                        style: {
-                            cursor: 'pointer',
-                        },
-                    };
-                }}
-                pagination={false}
-                rowKey="project"
-                rowSelection={rowSelection}
-            />
-        </Flex>
+                            icon={<DeleteIcon width={13} height={13} />}
+                            disabled={selectedRowKeys.length === 0}
+                            variant="dashed"
+                            onClick={handleDelete}
+                        >
+                            {t('action.delete')}
+                        </SecondaryButton>
+                    }
+                />
+            </div>
+        </div>
     );
 };
 
